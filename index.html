@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>연속 촬영 카메라</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            text-align: center;
+            padding: 20px;
+            background-color: #f4f4f5;
+        }
+        /* 카메라 화면 스타일 */
+        video {
+            width: 100%;
+            max-width: 400px;
+            background: #000;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        #status {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #333;
+            margin: 10px 0;
+        }
+        button {
+            padding: 15px 30px;
+            font-size: 18px;
+            font-weight: bold;
+            margin: 10px;
+            cursor: pointer;
+            border-radius: 8px;
+            border: none;
+            background: #007AFF; /* iOS 블루 */
+            color: white;
+            box-shadow: 0 2px 4px rgba(0,122,255,0.3);
+        }
+        button:disabled {
+            background: #a1c6ea;
+            cursor: not-allowed;
+        }
+        /* 찍힌 사진들이 표시될 갤러리 영역 */
+        #gallery {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        #gallery img {
+            width: 80px;
+            height: 80px;
+            object-fit: cover;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+
+    <h2>100장 연속 촬영</h2>
+    <video id="video" autoplay playsinline></video>
+    
+    <div id="status">카메라 준비 중...</div>
+    <button id="startBtn" disabled>촬영 시작 (2초 간격)</button>
+    
+    <canvas id="canvas" style="display:none;"></canvas>
+    
+    <div id="gallery"></div>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const statusText = document.getElementById('status');
+        const gallery = document.getElementById('gallery');
+
+        let count = 0;
+        const maxCount = 100;
+        let intervalId = null;
+
+        // 1. 카메라 접근 권한 요청 및 비디오 스트림 연결
+        async function initCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    // facingMode: 'environment'는 후면 카메라를 의미합니다. (전면은 'user')
+                    video: { facingMode: 'environment' }
+                });
+                video.srcObject = stream;
+                
+                // 비디오가 로드되면 버튼 활성화
+                video.onloadedmetadata = () => {
+                    startBtn.disabled = false;
+                    statusText.innerText = "대기 중";
+                };
+            } catch (err) {
+                statusText.innerText = "카메라 접근 권한이 필요합니다.";
+                console.error("카메라 에러:", err);
+            }
+        }
+
+        // 2. 실제 사진을 찍고 화면에 추가하는 함수
+        function takePhoto() {
+            if (count >= maxCount) {
+                clearInterval(intervalId);
+                statusText.innerText = "100장 촬영 완료!";
+                startBtn.disabled = false;
+                startBtn.innerText = "다시 촬영하기";
+                return;
+            }
+
+            // 비디오의 실제 해상도에 맞춰 캔버스 크기 지정
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            
+            // 캔버스에 현재 비디오 프레임을 그림
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // 캔버스의 이미지를 데이터 URL(JPEG)로 변환
+            const imgUrl = canvas.toDataURL('image/jpeg', 0.8); // 0.8은 이미지 품질(80%)
+            
+            // img 태그를 생성하여 갤러리에 추가
+            const img = document.createElement('img');
+            img.src = imgUrl;
+            gallery.prepend(img); // 가장 최근 사진이 맨 앞에 오도록 prepend 사용
+
+            count++;
+            statusText.innerText = `촬영 중... (${count} / ${maxCount})`;
+        }
+
+        // 3. 버튼 클릭 시 타이머 시작
+        startBtn.addEventListener('click', () => {
+            count = 0;
+            gallery.innerHTML = ''; // 기존 갤러리 비우기
+            startBtn.disabled = true;
+            statusText.innerText = `촬영 중... (0 / ${maxCount})`;
+
+            // 첫 번째 사진을 즉시 찍고, 이후 2000ms(2초)마다 반복
+            takePhoto();
+            intervalId = setInterval(takePhoto, 2000);
+        });
+
+        // 페이지 로드 시 카메라 초기화 실행
+        initCamera();
+    </script>
+</body>
+</html>
