@@ -11,7 +11,6 @@
             padding: 20px;
             background-color: #f4f4f5;
         }
-        /* 카메라 화면 스타일 */
         video {
             width: 100%;
             max-width: 400px;
@@ -23,25 +22,38 @@
             font-size: 1.2rem;
             font-weight: bold;
             color: #333;
+            margin: 15px 0;
+            min-height: 24px;
+        }
+        .btn-group {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
             margin: 10px 0;
         }
         button {
-            padding: 15px 30px;
-            font-size: 18px;
+            padding: 15px 20px;
+            font-size: 16px;
             font-weight: bold;
-            margin: 10px;
             cursor: pointer;
             border-radius: 8px;
             border: none;
-            background: #007AFF; /* iOS 블루 */
             color: white;
-            box-shadow: 0 2px 4px rgba(0,122,255,0.3);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            flex: 1;
+            max-width: 180px;
+        }
+        #startBtn {
+            background: #007AFF; /* 파란색 */
+        }
+        #stopBtn {
+            background: #FF3B30; /* 빨간색 */
         }
         button:disabled {
-            background: #a1c6ea;
+            background: #ccc !important;
             cursor: not-allowed;
+            box-shadow: none;
         }
-        /* 찍힌 사진들이 표시될 갤러리 영역 */
         #gallery {
             display: flex;
             flex-wrap: wrap;
@@ -64,10 +76,13 @@
     <video id="video" autoplay playsinline></video>
     
     <div id="status">카메라 준비 중...</div>
-    <button id="startBtn" disabled>촬영 시작 (2초 간격)</button>
+    
+    <div class="btn-group">
+        <button id="startBtn" disabled>촬영 시작</button>
+        <button id="stopBtn" disabled>촬영 정지</button>
+    </div>
     
     <canvas id="canvas" style="display:none;"></canvas>
-    
     <div id="gallery"></div>
 
     <script>
@@ -75,23 +90,23 @@
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
         const statusText = document.getElementById('status');
         const gallery = document.getElementById('gallery');
 
         let count = 0;
         const maxCount = 100;
         let intervalId = null;
+        let countdownId = null; // 5초 대기용 타이머
 
-        // 1. 카메라 접근 권한 요청 및 비디오 스트림 연결
+        // 1. 카메라 접근 권한 요청
         async function initCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    // facingMode: 'environment'는 후면 카메라를 의미합니다. (전면은 'user')
                     video: { facingMode: 'environment' }
                 });
                 video.srcObject = stream;
                 
-                // 비디오가 로드되면 버튼 활성화
                 video.onloadedmetadata = () => {
                     startBtn.disabled = false;
                     statusText.innerText = "대기 중";
@@ -102,48 +117,72 @@
             }
         }
 
-        // 2. 실제 사진을 찍고 화면에 추가하는 함수
+        // 2. 사진 촬영 함수
         function takePhoto() {
             if (count >= maxCount) {
-                clearInterval(intervalId);
-                statusText.innerText = "100장 촬영 완료!";
-                startBtn.disabled = false;
-                startBtn.innerText = "다시 촬영하기";
+                stopShooting("100장 촬영 완료!");
                 return;
             }
 
-            // 비디오의 실제 해상도에 맞춰 캔버스 크기 지정
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
-            
-            // 캔버스에 현재 비디오 프레임을 그림
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            // 캔버스의 이미지를 데이터 URL(JPEG)로 변환
-            const imgUrl = canvas.toDataURL('image/jpeg', 0.8); // 0.8은 이미지 품질(80%)
-            
-            // img 태그를 생성하여 갤러리에 추가
+            const imgUrl = canvas.toDataURL('image/jpeg', 0.8);
             const img = document.createElement('img');
             img.src = imgUrl;
-            gallery.prepend(img); // 가장 최근 사진이 맨 앞에 오도록 prepend 사용
+            gallery.prepend(img);
 
             count++;
             statusText.innerText = `촬영 중... (${count} / ${maxCount})`;
         }
 
-        // 3. 버튼 클릭 시 타이머 시작
-        startBtn.addEventListener('click', () => {
-            count = 0;
-            gallery.innerHTML = ''; // 기존 갤러리 비우기
-            startBtn.disabled = true;
-            statusText.innerText = `촬영 중... (0 / ${maxCount})`;
+        // 3. 촬영 정지 처리 함수
+        function stopShooting(message) {
+            clearInterval(intervalId);
+            clearInterval(countdownId);
+            
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            
+            // 기존 문구가 없으면 중지 문구 출력
+            statusText.innerText = message || `촬영 중지됨 (총 ${count}장 완료)`;
+            startBtn.innerText = "새로 촬영하기";
+        }
 
-            // 첫 번째 사진을 즉시 찍고, 이후 2000ms(2초)마다 반복
-            takePhoto();
-            intervalId = setInterval(takePhoto, 2000);
+        // 시작 버튼 클릭 이벤트 (5초 카운트다운 추가)
+        startBtn.addEventListener('click', () => {
+            // 초기화 세팅
+            count = 0;
+            gallery.innerHTML = ''; // 화면에 있는 기존 사진 비우기
+            startBtn.disabled = true;
+            stopBtn.disabled = false; // 정지 버튼 활성화
+            
+            let countdown = 5;
+            statusText.innerText = `준비... ${countdown}초 후 시작`;
+
+            // 1초마다 카운트다운 숫자 변경
+            countdownId = setInterval(() => {
+                countdown--;
+                if (countdown > 0) {
+                    statusText.innerText = `준비... ${countdown}초 후 시작`;
+                } else {
+                    // 카운트다운이 0이 되면 타이머 종료 후 실제 촬영 시작
+                    clearInterval(countdownId);
+                    statusText.innerText = `촬영 중... (0 / ${maxCount})`;
+                    
+                    takePhoto(); // 첫 장 즉시 촬영
+                    intervalId = setInterval(takePhoto, 2000); // 이후 2초마다 촬영
+                }
+            }, 1000);
         });
 
-        // 페이지 로드 시 카메라 초기화 실행
+        // 정지 버튼 클릭 이벤트
+        stopBtn.addEventListener('click', () => {
+            stopShooting();
+        });
+
+        // 페이지 로드 시 카메라 초기화
         initCamera();
     </script>
 </body>
