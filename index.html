@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>아이폰 15 Pro 고화질 캡처</title>
+    <title>아이폰 15 Pro 감성 셀카 카메라</title>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <style>
         body {
@@ -18,8 +18,8 @@
             background: #000;
             border-radius: 12px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: filter 0.3s ease; /* 필터 변경 시 부드러운 전환 효과 */
         }
-        /* 전면 카메라일 때 좌우 반전 효과를 주기 위한 클래스 */
         .mirrored {
             transform: scaleX(-1);
         }
@@ -40,6 +40,17 @@
         .resolution-text {
             color: #007AFF;
             font-size: 0.9rem;
+            margin-bottom: 10px;
+        }
+        /* 필터 선택 드롭다운 스타일 */
+        select {
+            width: 100%;
+            padding: 10px;
+            font-size: 16px;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+            margin-bottom: 10px;
+            background-color: #fff;
         }
         .btn-group {
             display: flex;
@@ -67,9 +78,8 @@
             background: #34C759; 
             flex-basis: 100%; 
         }
-        /* 카메라 전환 버튼 스타일 */
         #switchCameraBtn {
-            background: #5856D6; /* 보라색 */
+            background: #5856D6;
             flex-basis: 100%;
             margin-bottom: 10px;
         }
@@ -96,8 +106,21 @@
 </head>
 <body>
 
-    <h2>고화질 연속 촬영</h2>
-    <video id="video" autoplay playsinline></video>
+    <h2>고화질 셀카 & 연속 촬영</h2>
+    
+    <!-- 필터 선택 메뉴 추가 -->
+    <div style="max-width: 400px; margin: 0 auto;">
+        <select id="filterSelect">
+            <option value="none">원본 (필터 없음)</option>
+            <option value="brightness(1.1) contrast(0.9) saturate(1.1)" selected>✨ 소프트 (화사함, 셀카 추천)</option>
+            <option value="sepia(0.3) saturate(1.2) contrast(0.95)">🍂 웜톤 (따뜻함)</option>
+            <option value="hue-rotate(-15deg) saturate(1.1) brightness(1.05)">❄️ 쿨톤 (청량함)</option>
+            <option value="sepia(0.5) contrast(1.1) brightness(0.9)">🎞️ 빈티지 (필름 느낌)</option>
+            <option value="grayscale(100%) contrast(1.2)">🖤 흑백</option>
+        </select>
+    </div>
+
+    <video id="video" autoplay playsinline style="filter: brightness(1.1) contrast(0.9) saturate(1.1);"></video>
     
     <div id="info-panel">
         <div id="status" class="info-text">카메라 준비 중...</div>
@@ -105,7 +128,6 @@
     </div>
     
     <div class="btn-group">
-        <!-- 카메라 전환 버튼 추가 -->
         <button id="switchCameraBtn">전면/후면 카메라 전환</button>
         <button id="startBtn" disabled>촬영 시작</button>
         <button id="stopBtn" disabled>촬영 정지</button>
@@ -123,6 +145,7 @@
         const stopBtn = document.getElementById('stopBtn');
         const downloadBtn = document.getElementById('downloadBtn');
         const switchCameraBtn = document.getElementById('switchCameraBtn');
+        const filterSelect = document.getElementById('filterSelect');
         const statusText = document.getElementById('status');
         const resInfo = document.getElementById('resInfo');
         const gallery = document.getElementById('gallery');
@@ -132,20 +155,21 @@
         let intervalId = null;
         let countdownId = null;
         let capturedImages = []; 
-        let currentStream = null; // 현재 카메라 스트림 저장용 변수
+        let currentStream = null; 
         
-        // 현재 카메라 모드 상태 ('environment' = 후면, 'user' = 전면)
-        let isFrontCamera = false;
+        let isFrontCamera = true; // 셀카 위주이므로 시작 시 전면 카메라를 기본값으로 변경
 
-        // 1. 카메라 권한 및 스트림 연결 함수
+        // 필터 변경 시 비디오(프리뷰)에 즉각 적용
+        filterSelect.addEventListener('change', (e) => {
+            video.style.filter = e.target.value;
+        });
+
         async function initCamera() {
-            // 기존에 켜져 있는 카메라가 있다면 완전히 종료 (전환 시 충돌 방지)
             if (currentStream) {
                 currentStream.getTracks().forEach(track => track.stop());
             }
 
             try {
-                // 전면/후면 상태에 따라 facingMode 변경
                 const facingMode = isFrontCamera ? 'user' : 'environment';
                 
                 const constraints = {
@@ -157,10 +181,9 @@
                 };
                 
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                currentStream = stream; // 현재 스트림 저장
+                currentStream = stream; 
                 video.srcObject = stream;
                 
-                // 전면 카메라일 때 화면 거울 모드(좌우 반전) 적용
                 if (isFrontCamera) {
                     video.classList.add('mirrored');
                 } else {
@@ -169,7 +192,7 @@
                 
                 video.onloadedmetadata = () => {
                     startBtn.disabled = false;
-                    switchCameraBtn.disabled = false; // 카메라 전환 버튼 활성화
+                    switchCameraBtn.disabled = false; 
                     const modeText = isFrontCamera ? "(전면)" : "(후면)";
                     statusText.innerText = `대기 중 ${modeText}`;
                     resInfo.innerText = `현재 해상도: ${video.videoWidth} x ${video.videoHeight}`;
@@ -181,20 +204,14 @@
             }
         }
 
-        // 2. 카메라 전환 버튼 이벤트
         switchCameraBtn.addEventListener('click', () => {
-            // 카메라 상태 토글
             isFrontCamera = !isFrontCamera;
-            
             statusText.innerText = "카메라 전환 중...";
-            switchCameraBtn.disabled = true; // 전환 중 중복 클릭 방지
+            switchCameraBtn.disabled = true; 
             startBtn.disabled = true;
-            
-            // 카메라 다시 초기화
             initCamera();
         });
 
-        // 3. 사진 촬영 함수
         function takePhoto() {
             if (count >= maxCount) {
                 stopShooting("100장 촬영 완료!");
@@ -204,15 +221,18 @@
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             
-            // 전면 카메라 촬영 시 캔버스에 그릴 때 좌우 반전 처리
+            // 전면 카메라일 경우 캔버스 좌우 반전
             if (isFrontCamera) {
                 ctx.translate(canvas.width, 0);
                 ctx.scale(-1, 1);
             }
             
+            // ★ 중요: 현재 선택된 필터 값을 캔버스에 적용하여 사진을 그림 ★
+            ctx.filter = filterSelect.value;
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             
-            // 캔버스 상태 복구 (다음 촬영을 위해)
+            // 필터 및 반전 상태 초기화 (다음 촬영을 위해)
+            ctx.filter = 'none';
             if (isFrontCamera) {
                 ctx.setTransform(1, 0, 0, 1, 0, 0); 
             }
@@ -222,10 +242,11 @@
             const img = document.createElement('img');
             img.src = imgUrl;
             
-            // 갤러리에 표시되는 이미지도 전면이면 반전 효과 적용
             if (isFrontCamera) {
                 img.style.transform = 'scaleX(-1)';
             }
+            // 갤러리 프리뷰에도 필터 적용
+            img.style.filter = filterSelect.value;
             
             gallery.prepend(img);
 
@@ -237,18 +258,17 @@
             downloadBtn.disabled = false; 
         }
 
-        // 4. 촬영 정지 처리
         function stopShooting(message) {
             clearInterval(intervalId);
             clearInterval(countdownId);
             startBtn.disabled = false;
             stopBtn.disabled = true;
-            switchCameraBtn.disabled = false; // 정지 시 전환 버튼 활성화
+            switchCameraBtn.disabled = false;
+            filterSelect.disabled = false; // 정지 시 필터 변경 가능
             statusText.innerText = message || `촬영 중지됨 (총 ${count}장 완료)`;
             startBtn.innerText = "새로 촬영하기";
         }
 
-        // 5. 시작 버튼
         startBtn.addEventListener('click', () => {
             count = 0;
             capturedImages = []; 
@@ -256,7 +276,8 @@
             
             startBtn.disabled = true;
             stopBtn.disabled = false;
-            switchCameraBtn.disabled = true; // 촬영 중엔 전환 불가
+            switchCameraBtn.disabled = true; 
+            filterSelect.disabled = true; // 촬영 중에는 필터 변경 금지
             downloadBtn.disabled = true; 
             downloadBtn.innerText = "전체 사진 저장 (ZIP)";
             
@@ -270,19 +291,16 @@
                 } else {
                     clearInterval(countdownId);
                     statusText.innerText = `촬영 중... (0 / ${maxCount})`;
-                    
                     takePhoto(); 
                     intervalId = setInterval(takePhoto, 2000); 
                 }
             }, 1000);
         });
 
-        // 6. 정지 버튼
         stopBtn.addEventListener('click', () => {
             stopShooting();
         });
 
-        // 7. ZIP 다운로드
         downloadBtn.addEventListener('click', async () => {
             if (capturedImages.length === 0) return;
 
@@ -291,7 +309,7 @@
 
             try {
                 if (typeof JSZip === 'undefined') {
-                    throw new Error("ZIP 라이브러리가 로드되지 않았습니다. 새로고침 후 다시 시도해주세요.");
+                    throw new Error("ZIP 라이브러리가 로드되지 않았습니다.");
                 }
 
                 const zip = new JSZip();
@@ -305,7 +323,7 @@
                 
                 const link = document.createElement('a');
                 link.href = URL.createObjectURL(content);
-                link.download = `high_res_photos_${new Date().getTime()}.zip`; 
+                link.download = `selfie_photos_${new Date().getTime()}.zip`; 
                 link.click();
                 
                 URL.revokeObjectURL(link.href);
@@ -324,7 +342,6 @@
             }
         });
 
-        // 페이지 로드 시 카메라 초기화
         initCamera();
     </script>
 </body>
