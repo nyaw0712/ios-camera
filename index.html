@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>고화질 연속 촬영 & 자동 압축 카메라</title>
-    <!-- ZIP 파일 생성을 위한 JSZip 라이브러리 불러오기 -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <title>아이폰 15 Pro 고화질 캡처</title>
+    <!-- ZIP 라이브러리 (안정적인 jsDelivr CDN 사용) -->
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <style>
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
             text-align: center;
-            padding: 20px;
+            padding: 15px;
             background-color: #f4f4f5;
         }
         video {
@@ -20,22 +20,34 @@
             border-radius: 12px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
-        #status {
-            font-size: 1.2rem;
+        #info-panel {
+            background: #fff;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 15px auto;
+            max-width: 400px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .info-text {
+            font-size: 1.1rem;
             font-weight: bold;
             color: #333;
-            margin: 15px 0;
-            min-height: 24px;
+            margin: 5px 0;
+        }
+        .resolution-text {
+            color: #007AFF;
+            font-size: 0.9rem;
         }
         .btn-group {
             display: flex;
-            justify-content: center;
-            gap: 10px;
-            margin: 10px 0;
             flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+            max-width: 400px;
+            margin: 0 auto;
         }
         button {
-            padding: 15px 20px;
+            padding: 15px;
             font-size: 16px;
             font-weight: bold;
             cursor: pointer;
@@ -44,59 +56,51 @@
             color: white;
             box-shadow: 0 2px 4px rgba(0,0,0,0.2);
             flex: 1;
-            min-width: 140px;
-            max-width: 180px;
+            min-width: 120px;
         }
-        #startBtn { background: #007AFF; } /* 파란색 */
-        #stopBtn { background: #FF3B30; } /* 빨간색 */
+        #startBtn { background: #007AFF; }
+        #stopBtn { background: #FF3B30; }
         #downloadBtn { 
-            background: #34C759; /* 녹색 */ 
+            background: #34C759; 
             flex-basis: 100%; 
-            max-width: 370px;
-            margin-top: 5px;
         } 
         button:disabled {
             background: #ccc !important;
             cursor: not-allowed;
             box-shadow: none;
         }
-        .warning {
-            color: #FF3B30;
-            font-size: 0.85rem;
-            margin-top: 10px;
-            font-weight: bold;
-        }
         #gallery {
             display: flex;
             flex-wrap: wrap;
-            gap: 10px;
+            gap: 5px;
             justify-content: center;
             margin-top: 20px;
         }
         #gallery img {
-            width: 80px;
-            height: 80px;
+            width: 60px;
+            height: 60px;
             object-fit: cover;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border-radius: 6px;
+            border: 1px solid #ddd;
         }
     </style>
 </head>
 <body>
 
-    <h2>100장 고화질 연속 촬영</h2>
+    <h2>고화질 연속 촬영</h2>
     <video id="video" autoplay playsinline></video>
     
-    <div id="status">카메라 준비 중...</div>
+    <div id="info-panel">
+        <div id="status" class="info-text">카메라 준비 중...</div>
+        <!-- 현재 화질이 몇인지 보여주는 영역 -->
+        <div id="resInfo" class="resolution-text">카메라 해상도: 확인 중...</div>
+    </div>
     
     <div class="btn-group">
         <button id="startBtn" disabled>촬영 시작</button>
         <button id="stopBtn" disabled>촬영 정지</button>
-        <!-- 전체 저장 버튼 추가 -->
         <button id="downloadBtn" disabled>전체 사진 저장 (ZIP)</button>
     </div>
-    
-    <div class="warning">⚠️ 최고 화질(100%) 설정입니다. 기기 메모리에 따라 브라우저가 새로고침될 수 있습니다.</div>
     
     <canvas id="canvas" style="display:none;"></canvas>
     <div id="gallery"></div>
@@ -109,65 +113,69 @@
         const stopBtn = document.getElementById('stopBtn');
         const downloadBtn = document.getElementById('downloadBtn');
         const statusText = document.getElementById('status');
+        const resInfo = document.getElementById('resInfo');
         const gallery = document.getElementById('gallery');
 
         let count = 0;
         const maxCount = 100;
         let intervalId = null;
         let countdownId = null;
-        
-        // 찍힌 원본 데이터(Base64)를 순서대로 저장할 배열
         let capturedImages = []; 
 
-        // 1. 카메라 권한 및 해상도 설정
+        // 1. 카메라 권한 및 고화질 강제 요청
         async function initCamera() {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({
+                // 사파리에게 4K(3840x2160)를 요구하고, 안되면 최소 FHD(1920x1080)라도 내놓으라고 강제하는 옵션
+                const constraints = {
                     video: { 
                         facingMode: 'environment',
-                        width: { ideal: 4096 },
-                        height: { ideal: 2160 }
+                        width: { min: 1920, ideal: 3840 },
+                        height: { min: 1080, ideal: 2160 }
                     }
-                });
+                };
+                
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 video.srcObject = stream;
                 
+                // 비디오가 켜지고 해상도 정보가 들어오면 실행
                 video.onloadedmetadata = () => {
                     startBtn.disabled = false;
                     statusText.innerText = "대기 중";
+                    // 실제 아이폰이 허용한 해상도 표시
+                    resInfo.innerText = `현재 해상도: ${video.videoWidth} x ${video.videoHeight}`;
                 };
             } catch (err) {
-                statusText.innerText = "카메라 접근 권한이 필요합니다.";
+                statusText.innerText = "고화질 카메라 접근 실패";
+                resInfo.innerText = "오류: " + err.message;
                 console.error("카메라 에러:", err);
             }
         }
 
-        // 2. 사진 촬영 함수
+        // 2. 사진 촬영 함수 (100% 품질)
         function takePhoto() {
             if (count >= maxCount) {
                 stopShooting("100장 촬영 완료!");
                 return;
             }
 
+            // 비디오의 실제 고해상도 픽셀만큼 캔버스 크기 지정
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            // 화질 손상 없는 100% 품질로 데이터 추출
+            // 이미지 품질 1.0 (100% 무손실에 가까운 JPEG)
             const imgUrl = canvas.toDataURL('image/jpeg', 1.0);
             
-            // 화면 갤러리 표시용
             const img = document.createElement('img');
             img.src = imgUrl;
             gallery.prepend(img);
 
-            // ZIP 압축을 위해 순수 데이터(Base64)만 잘라서 배열에 저장
+            // ZIP 압축을 위한 데이터 저장
             const base64Data = imgUrl.split('base64,')[1];
             capturedImages.push(base64Data);
 
             count++;
             statusText.innerText = `촬영 중... (${count} / ${maxCount})`;
-            
-            // 한 장이라도 찍히면 저장 버튼 활성화
             downloadBtn.disabled = false; 
         }
 
@@ -175,23 +183,21 @@
         function stopShooting(message) {
             clearInterval(intervalId);
             clearInterval(countdownId);
-            
             startBtn.disabled = false;
             stopBtn.disabled = true;
-            
             statusText.innerText = message || `촬영 중지됨 (총 ${count}장 완료)`;
             startBtn.innerText = "새로 촬영하기";
         }
 
-        // 4. 시작 버튼 이벤트
+        // 4. 시작 버튼
         startBtn.addEventListener('click', () => {
             count = 0;
-            capturedImages = []; // 배열 초기화
-            gallery.innerHTML = ''; // 갤러리 초기화
+            capturedImages = []; 
+            gallery.innerHTML = ''; 
             
             startBtn.disabled = true;
             stopBtn.disabled = false;
-            downloadBtn.disabled = true; // 촬영 시작 시 저장 버튼은 끕니다.
+            downloadBtn.disabled = true; 
             downloadBtn.innerText = "전체 사진 저장 (ZIP)";
             
             let countdown = 5;
@@ -211,39 +217,39 @@
             }, 1000);
         });
 
-        // 5. 정지 버튼 이벤트
+        // 5. 정지 버튼
         stopBtn.addEventListener('click', () => {
             stopShooting();
         });
 
-        // 6. ZIP 다운로드 버튼 이벤트
+        // 6. ZIP 다운로드 기능
         downloadBtn.addEventListener('click', async () => {
             if (capturedImages.length === 0) return;
 
-            // 저장 중임을 표시하고 버튼 일시 비활성화 (중복 클릭 방지)
+            // 중복 클릭 방지
             downloadBtn.disabled = true;
-            downloadBtn.innerText = "ZIP 파일 생성 중... (잠시 대기)";
+            downloadBtn.innerText = "압축 중... (화면을 끄지 마세요)";
 
             try {
+                // JSZip 라이브러리가 정상 로드되었는지 확인
+                if (typeof JSZip === 'undefined') {
+                    throw new Error("ZIP 라이브러리가 로드되지 않았습니다. 새로고침 후 다시 시도해주세요.");
+                }
+
                 const zip = new JSZip();
                 
-                // 저장된 이미지 배열을 순회하며 ZIP 파일에 추가
                 capturedImages.forEach((data, index) => {
-                    // 파일명을 photo_001.jpg, photo_002.jpg 형태로 지정
                     const fileNum = String(index + 1).padStart(3, '0');
                     zip.file(`photo_${fileNum}.jpg`, data, {base64: true});
                 });
 
-                // ZIP 파일 생성 (Blob 형태)
                 const content = await zip.generateAsync({ type: "blob" });
                 
-                // 다운로드를 위한 가상의 a 태그 생성 및 클릭 유도
                 const link = document.createElement('a');
                 link.href = URL.createObjectURL(content);
-                link.download = `photos_${new Date().getTime()}.zip`; // 현재 시간 기반 파일명
+                link.download = `high_res_photos_${new Date().getTime()}.zip`; 
                 link.click();
                 
-                // 메모리 정리
                 URL.revokeObjectURL(link.href);
 
                 downloadBtn.innerText = "저장 완료!";
@@ -254,9 +260,9 @@
 
             } catch (error) {
                 console.error("ZIP 생성 오류:", error);
-                alert("파일 압축 중 오류가 발생했습니다.");
+                alert("파일 압축 중 오류 발생: " + error.message);
                 downloadBtn.disabled = false;
-                downloadBtn.innerText = "다시 시도하기";
+                downloadBtn.innerText = "저장 실패 (다시 시도)";
             }
         });
 
