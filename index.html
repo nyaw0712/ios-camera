@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>아이폰 15 Pro 고화질 캡처</title>
-    <!-- ZIP 라이브러리 (안정적인 jsDelivr CDN 사용) -->
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <style>
         body {
@@ -19,6 +18,10 @@
             background: #000;
             border-radius: 12px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        /* 전면 카메라일 때 좌우 반전 효과를 주기 위한 클래스 */
+        .mirrored {
+            transform: scaleX(-1);
         }
         #info-panel {
             background: #fff;
@@ -63,7 +66,13 @@
         #downloadBtn { 
             background: #34C759; 
             flex-basis: 100%; 
-        } 
+        }
+        /* 카메라 전환 버튼 스타일 */
+        #switchCameraBtn {
+            background: #5856D6; /* 보라색 */
+            flex-basis: 100%;
+            margin-bottom: 10px;
+        }
         button:disabled {
             background: #ccc !important;
             cursor: not-allowed;
@@ -92,11 +101,12 @@
     
     <div id="info-panel">
         <div id="status" class="info-text">카메라 준비 중...</div>
-        <!-- 현재 화질이 몇인지 보여주는 영역 -->
         <div id="resInfo" class="resolution-text">카메라 해상도: 확인 중...</div>
     </div>
     
     <div class="btn-group">
+        <!-- 카메라 전환 버튼 추가 -->
+        <button id="switchCameraBtn">전면/후면 카메라 전환</button>
         <button id="startBtn" disabled>촬영 시작</button>
         <button id="stopBtn" disabled>촬영 정지</button>
         <button id="downloadBtn" disabled>전체 사진 저장 (ZIP)</button>
@@ -112,6 +122,7 @@
         const startBtn = document.getElementById('startBtn');
         const stopBtn = document.getElementById('stopBtn');
         const downloadBtn = document.getElementById('downloadBtn');
+        const switchCameraBtn = document.getElementById('switchCameraBtn');
         const statusText = document.getElementById('status');
         const resInfo = document.getElementById('resInfo');
         const gallery = document.getElementById('gallery');
@@ -121,56 +132,103 @@
         let intervalId = null;
         let countdownId = null;
         let capturedImages = []; 
+        let currentStream = null; // 현재 카메라 스트림 저장용 변수
+        
+        // 현재 카메라 모드 상태 ('environment' = 후면, 'user' = 전면)
+        let isFrontCamera = false;
 
-        // 1. 카메라 권한 및 고화질 강제 요청
+        // 1. 카메라 권한 및 스트림 연결 함수
         async function initCamera() {
+            // 기존에 켜져 있는 카메라가 있다면 완전히 종료 (전환 시 충돌 방지)
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+            }
+
             try {
-                // 사파리에게 4K(3840x2160)를 요구하고, 안되면 최소 FHD(1920x1080)라도 내놓으라고 강제하는 옵션
+                // 전면/후면 상태에 따라 facingMode 변경
+                const facingMode = isFrontCamera ? 'user' : 'environment';
+                
                 const constraints = {
                     video: { 
-                        facingMode: 'environment',
+                        facingMode: facingMode,
                         width: { min: 1920, ideal: 3840 },
                         height: { min: 1080, ideal: 2160 }
                     }
                 };
                 
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                currentStream = stream; // 현재 스트림 저장
                 video.srcObject = stream;
                 
-                // 비디오가 켜지고 해상도 정보가 들어오면 실행
+                // 전면 카메라일 때 화면 거울 모드(좌우 반전) 적용
+                if (isFrontCamera) {
+                    video.classList.add('mirrored');
+                } else {
+                    video.classList.remove('mirrored');
+                }
+                
                 video.onloadedmetadata = () => {
                     startBtn.disabled = false;
-                    statusText.innerText = "대기 중";
-                    // 실제 아이폰이 허용한 해상도 표시
+                    switchCameraBtn.disabled = false; // 카메라 전환 버튼 활성화
+                    const modeText = isFrontCamera ? "(전면)" : "(후면)";
+                    statusText.innerText = `대기 중 ${modeText}`;
                     resInfo.innerText = `현재 해상도: ${video.videoWidth} x ${video.videoHeight}`;
                 };
             } catch (err) {
-                statusText.innerText = "고화질 카메라 접근 실패";
+                statusText.innerText = "카메라 접근 실패";
                 resInfo.innerText = "오류: " + err.message;
                 console.error("카메라 에러:", err);
             }
         }
 
-        // 2. 사진 촬영 함수 (100% 품질)
+        // 2. 카메라 전환 버튼 이벤트
+        switchCameraBtn.addEventListener('click', () => {
+            // 카메라 상태 토글
+            isFrontCamera = !isFrontCamera;
+            
+            statusText.innerText = "카메라 전환 중...";
+            switchCameraBtn.disabled = true; // 전환 중 중복 클릭 방지
+            startBtn.disabled = true;
+            
+            // 카메라 다시 초기화
+            initCamera();
+        });
+
+        // 3. 사진 촬영 함수
         function takePhoto() {
             if (count >= maxCount) {
                 stopShooting("100장 촬영 완료!");
                 return;
             }
 
-            // 비디오의 실제 고해상도 픽셀만큼 캔버스 크기 지정
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
+            
+            // 전면 카메라 촬영 시 캔버스에 그릴 때 좌우 반전 처리
+            if (isFrontCamera) {
+                ctx.translate(canvas.width, 0);
+                ctx.scale(-1, 1);
+            }
+            
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            // 캔버스 상태 복구 (다음 촬영을 위해)
+            if (isFrontCamera) {
+                ctx.setTransform(1, 0, 0, 1, 0, 0); 
+            }
 
-            // 이미지 품질 1.0 (100% 무손실에 가까운 JPEG)
             const imgUrl = canvas.toDataURL('image/jpeg', 1.0);
             
             const img = document.createElement('img');
             img.src = imgUrl;
+            
+            // 갤러리에 표시되는 이미지도 전면이면 반전 효과 적용
+            if (isFrontCamera) {
+                img.style.transform = 'scaleX(-1)';
+            }
+            
             gallery.prepend(img);
 
-            // ZIP 압축을 위한 데이터 저장
             const base64Data = imgUrl.split('base64,')[1];
             capturedImages.push(base64Data);
 
@@ -179,17 +237,18 @@
             downloadBtn.disabled = false; 
         }
 
-        // 3. 촬영 정지 처리
+        // 4. 촬영 정지 처리
         function stopShooting(message) {
             clearInterval(intervalId);
             clearInterval(countdownId);
             startBtn.disabled = false;
             stopBtn.disabled = true;
+            switchCameraBtn.disabled = false; // 정지 시 전환 버튼 활성화
             statusText.innerText = message || `촬영 중지됨 (총 ${count}장 완료)`;
             startBtn.innerText = "새로 촬영하기";
         }
 
-        // 4. 시작 버튼
+        // 5. 시작 버튼
         startBtn.addEventListener('click', () => {
             count = 0;
             capturedImages = []; 
@@ -197,6 +256,7 @@
             
             startBtn.disabled = true;
             stopBtn.disabled = false;
+            switchCameraBtn.disabled = true; // 촬영 중엔 전환 불가
             downloadBtn.disabled = true; 
             downloadBtn.innerText = "전체 사진 저장 (ZIP)";
             
@@ -217,21 +277,19 @@
             }, 1000);
         });
 
-        // 5. 정지 버튼
+        // 6. 정지 버튼
         stopBtn.addEventListener('click', () => {
             stopShooting();
         });
 
-        // 6. ZIP 다운로드 기능
+        // 7. ZIP 다운로드
         downloadBtn.addEventListener('click', async () => {
             if (capturedImages.length === 0) return;
 
-            // 중복 클릭 방지
             downloadBtn.disabled = true;
             downloadBtn.innerText = "압축 중... (화면을 끄지 마세요)";
 
             try {
-                // JSZip 라이브러리가 정상 로드되었는지 확인
                 if (typeof JSZip === 'undefined') {
                     throw new Error("ZIP 라이브러리가 로드되지 않았습니다. 새로고침 후 다시 시도해주세요.");
                 }
